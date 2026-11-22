@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Carte 2D — Les Carnets de l'Apothicaire</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@500;700&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#1b1512;font-family:Inter,sans-serif;color:#2b1d14}
+#app{display:grid;grid-template-columns:290px 1fr 320px;grid-template-rows:1fr auto;gap:12px;height:100%;padding:12px}
+.panel{background:#f3e6cc;border:1px solid #8a5a3b;border-radius:10px}
+#left{grid-row:1/3;display:flex;flex-direction:column;gap:12px;min-height:0}
+#title{padding:12px 14px}
+#title h1{font-family:'Noto Serif SC',serif;font-size:18px;margin:0;color:#7a1f14}
+#title p{margin:3px 0 0;font-size:12px;color:#6b4a33}
+#quest{margin-top:8px;font-size:12px;background:#7a1f14;color:#f3e6cc;border-radius:6px;padding:6px 8px;line-height:1.4}
+#quest.done{background:#1D9E75}
+#bag{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.slot{width:30px;height:30px;border-radius:6px;border:1px dashed #b89a74;display:flex;align-items:center;justify-content:center;font-size:16px;opacity:.28;filter:grayscale(1)}
+.slot.on{opacity:1;filter:none;border:1px solid #BA7517;background:#fbf3e2}
+.slot.lost{opacity:.55;border-color:#A32D2D;background:repeating-linear-gradient(45deg,transparent 0 4px,#f2c9c9 4px 6px)}
+#legend{padding:10px 12px;font-size:12px;overflow:auto;flex:1;min-height:0}
+#legend b{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#8a5a3b;margin:8px 0 3px}
+#legend b:first-child{margin-top:0}
+.lg{display:flex;align-items:center;gap:8px;margin:3px 0}
+.sw{width:14px;height:14px;border-radius:3px;flex:none}
+.ln{width:22px;height:0;border-top:3px dashed;flex:none}
+.ln.solid{border-top-style:solid}
+.ic{width:22px;text-align:center;flex:none}
+#mapwrap{grid-column:2;grid-row:1;position:relative;min-height:0;border-radius:10px;overflow:hidden;background:#5f7d45;border:1px solid #8a5a3b}
+#map{width:100%;height:100%;display:block;cursor:grab;touch-action:none;user-select:none}
+#map.drag{cursor:grabbing}
+#hint{position:absolute;top:8px;left:50%;transform:translateX(-50%);font-size:11px;background:#f3e6ccdd;padding:3px 8px;border-radius:6px;pointer-events:none}
+#info{grid-column:3;grid-row:1;padding:14px 16px;overflow:auto}
+#info .tag{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:#8a5a3b}
+#info h2{font-family:'Noto Serif SC',serif;font-size:19px;margin:2px 0 0;color:#7a1f14}
+#info p{font-size:13.5px;line-height:1.55;margin:8px 0 0}
+.row{display:flex;gap:8px;font-size:12.5px;line-height:1.45;border-radius:6px;padding:7px 9px;margin-top:8px}
+.row .k{font-weight:500;white-space:nowrap}
+.mono{font-family:'Noto Serif SC',serif;font-style:italic;border-left:3px solid #8a5a3b;padding:2px 0 2px 10px;color:#5a3a24}
+.row.guide{background:#ece4f6}.row.end{background:#1D9E75;color:#fff}
+.row.learn{background:#e6eef7}.row.gain{background:#f6e2b8}.row.lose{background:#f5d4d4}.row.open{background:#d5efe4}
+#steps{grid-column:2/4;padding:8px;display:flex;gap:6px;align-items:center;justify-content:center}
+button{font:500 12px Inter,sans-serif;background:#7a1f14;color:#f3e6cc;border:0;border-radius:6px;padding:8px 12px;cursor:pointer}
+button.ghost{background:transparent;color:#7a1f14;border:1px solid #7a1f14}
+#stepLabel{font-size:12.5px;width:300px;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.zone{cursor:pointer;transition:opacity .5s}
+.zone.dim{opacity:.22}
+.badge{transition:opacity .4s}
+.badge.hide{opacity:0;pointer-events:none}
+#night{transition:opacity .7s;pointer-events:none}
+@media(max-width:1000px){
+  html,body{height:auto}
+  #app{grid-template-columns:1fr;grid-template-rows:auto;height:auto}
+  #left,#info,#steps{grid-row:auto;grid-column:auto}
+  #mapwrap{height:70vh}
+  #legend{max-height:none}
+  #stepLabel{width:150px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="left">
+    <div id="title" class="panel">
+      <h1>Les Carnets de l'Apothicaire</h1>
+      <p>Carte du Palais intérieur · d'après les épisodes 1 à 7 de l'anime</p>
+      <div id="quest"></div>
+      <div id="bag"></div>
+    </div>
+    <div id="legend" class="panel">
+      <b>Zones</b>
+      <div class="lg"><span class="sw" style="background:#1D9E75"></span>Accessible au chapitre 1</div>
+      <div class="lg"><span class="sw" style="background:#D85A30"></span>Débloquée plus tard</div>
+      <div class="lg"><span class="sw" style="background:#9a978d"></span>Hub, entrée, hors les murs</div>
+      <b>Chemins</b>
+      <div class="lg"><span class="ln solid" style="border-color:#BA7517"></span>Aller : livraison, enlèvement, palais</div>
+      <div class="lg"><span class="ln" style="border-color:#D85A30"></span>Chemin de ronde du rempart (raccourci)</div>
+      <div class="lg"><span class="ln" style="border-color:#0F6E56"></span>Retour : palais → Verdigris → officine</div>
+      <b>Tutoriel invisible</b>
+      <div class="lg"><span class="ic">🎓</span>Étapes 1 à 10 : on apprend en jouant, sans écran de tuto</div>
+      <b>Symboles</b>
+      <div class="lg"><span class="ic">⭐</span>Objectif de la quête</div>
+      <div class="lg"><span class="ic">🔒</span>Lieu verrouillé</div>
+      <div class="lg"><span class="ic">👤</span>Personnage (PNJ)</div>
+      <div class="lg"><span class="ic">🌿</span>Herbes à livrer</div>
+      <div class="lg"><span class="ic">🎀</span>Statut de dame de compagnie</div>
+      <div class="lg"><span class="ic">🍫</span>Mélange au cacao</div>
+      <div class="lg"><span class="ic">🌸</span>Épingles : droit de demander une sortie</div>
+      <div class="lg"><span class="ic">🥣</span>Bol d'argent : preuve</div>
+      <div class="lg"><span class="ic">✉️</span>Lettres pour la maison Verdigris</div>
+      <div class="lg"><span class="ic">🎫</span>Permission de sortie (3 jours)</div>
+    </div>
+  </div>
+
+  <div id="mapwrap">
+    <svg id="map" viewBox="0 0 816 780" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Carte 2D du Palais intérieur">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M1 1L8 5L1 9z" fill="context-stroke"/></marker>
+        <radialGradient id="rg"><stop offset="0.55" stop-color="#000"/><stop offset="1" stop-color="#fff"/></radialGradient>
+        <mask id="lm"><rect x="-2000" y="-2000" width="5000" height="5000" fill="#fff"/><circle id="hole" r="95" fill="url(#rg)"/></mask>
+      </defs>
+      <g id="world"></g>
+      <rect id="night" x="-2000" y="-2000" width="5000" height="5000" fill="#0b0d16" opacity="0" mask="url(#lm)"/>
+      <g id="top"></g>
+    </svg>
+    <div id="hint">Molette : zoom · glisser : déplacer · clic sur un lieu : infos</div>
+  </div>
+
+  <div id="info" class="panel">
+    <div class="tag" id="iTag"></div>
+    <h2 id="iName"></h2>
+    <div id="iBody"></div>
+  </div>
+
+  <div id="steps" class="panel">
+    <button class="ghost" id="free">Vue d'ensemble</button>
+    <button id="prev" aria-label="Étape précédente">◀</button>
+    <span id="stepLabel">Parcours de Maomao</span>
+    <button id="next" aria-label="Étape suivante">▶</button>
+  </div>
+</div>
+
+<script>
+const zones = [
+  { id: 'officine', name: 'Officine de Luomen', x: -25, z: -33, w: 10, d: 9, cat: 'hub', kind: 'shop', npc: 'Luomen',
+    tag: 'Départ et arrivée', text: "La maison de Maomao et de son père adoptif Luomen, apothicaire du quartier des plaisirs. Le jeu commence ici et se termine quand elle y revient (épisodes 1 et 7)." },
+  { id: 'verdigris', name: 'Maison Verdigris', x: -11, z: -33, w: 12, d: 9, cat: 'hub', kind: 'verdigris', npc: 'Mère maquerelle',
+    tag: 'Prologue et retour', text: "La maison close (Rokushoukan) où Maomao livre ses herbes au début, et où elle revient pendant sa sortie (épisodes 1 et 7)." },
+  { id: 'champ', name: "Champ d'herbes", x: 18, z: -33, w: 18, d: 9, cat: 'hub', kind: 'hills', npc: 'Bandits',
+    tag: 'Prologue', text: "Le champ d'herbes médicinales où Maomao est enlevée par trois hommes (épisode 1)." },
+  { id: 'porte', name: 'Porte du Palais intérieur', x: 0, z: -21, w: 9, d: 4, cat: 'hub', kind: 'gate',
+    tag: 'Entrée et sortie', text: "On y entre vendue comme servante. On n'en ressort qu'avec une permission de sortie et un garant (épisode 7)." },
+  { id: 'blanchisserie', name: 'Blanchisserie', x: -17, z: 3, w: 12, d: 7, cat: 'start', kind: 'court', npc: 'Xiaolan',
+    tag: 'Épisode 1', text: "Maomao y travaille comme blanchisseuse. Xiaolan y raconte les rumeurs du palais." },
+  { id: 'jade', name: 'Pavillon de Jade', x: 0, z: 3, w: 16, d: 7, cat: 'start', kind: 'pavilion', npc: 'Gyokuyou',
+    tag: 'Épisodes 1, 2 et 5', text: "Le pavillon de la concubine Gyokuyou. Maomao y devient dame de compagnie et goûteuse." },
+  { id: 'jinshi', name: 'Bureau de Jinshi', x: 16, z: 3, w: 12, d: 7, cat: 'lock', kind: 'office2', npc: 'Jinshi',
+    tag: 'Épisode 1', text: "Jinshi y convoque les servantes et remonte jusqu'à l'auteure des messages." },
+  { id: 'cabinet', name: 'Cabinet médical', x: 0, z: -8, w: 16, d: 7, cat: 'lock', kind: 'office', npc: 'Guen',
+    tag: 'Épisodes 2 et 5', text: "Le cabinet du médecin Guen. Maomao y prépare ses remèdes et y soigne des patients." },
+  { id: 'jardins', name: 'Jardins du palais', x: -17, z: -8, w: 12, d: 7, cat: 'lock', kind: 'garden',
+    tag: 'Épisode 2', text: "Maomao y cueille des herbes pendant que son mélange au cacao refroidit." },
+  { id: 'cristal', name: 'Pavillon de Cristal', x: -17, z: 13, w: 12, d: 7, cat: 'lock', kind: 'pavilion', npc: 'Lihua',
+    tag: 'Épisodes 1 et 4', text: "Le pavillon de la concubine Lihua, qui ignore le message puis que Maomao soigne." },
+  { id: 'fete', name: 'Fête du jardin', x: 0, z: 13, w: 16, d: 7, cat: 'lock', kind: 'big', npc: 'Lihaku',
+    tag: 'Épisode 6', text: "La fête où la soupe de Gyokuyou est empoisonnée et où Maomao reçoit des épingles à cheveux." },
+  { id: 'diamant', name: 'Pavillon de Diamant', x: 16, z: 13, w: 12, d: 7, cat: 'lock', kind: 'pavilion', npc: 'Lishu',
+    tag: 'Épisodes 6 et 7', text: "Le pavillon de la concubine Lishu, la vraie cible du poison de la fête." },
+  { id: 'rempart', name: 'Rempart est', x: 27.5, z: 1, w: 5, d: 34, cat: 'lock', kind: 'wall', npc: 'Fuyou',
+    tag: 'Épisode 3', text: "La nuit, une « femme fantôme » y danse : c'est la concubine Fuyou. Sur la carte, son chemin de ronde sert aussi de raccourci." }
+];
+const ITEMS = {
+  herbes:     { e: '🌿', n: 'Herbes', use: "à livrer à la maison Verdigris" },
+  statut:     { e: '🎀', n: 'Dame de compagnie', use: "le statut qui ouvre les pavillons et le cabinet médical" },
+  cacao:      { e: '🍫', n: 'Mélange au cacao', use: "l'aphrodisiaque commandé par Jinshi" },
+  epingle:    { e: '🌸', n: 'Épingles à cheveux', use: "permettent de demander une sortie du palais, avec un garant" },
+  bol:        { e: '🥣', n: "Bol d'argent", use: "la preuve : on y relève les empreintes" },
+  lettre:     { e: '✉️', n: "Lettres d'introduction", use: "ouvrent à Lihaku les portes de la maison Verdigris" },
+  permission: { e: '🎫', n: 'Permission de sortie', use: "trois jours pour rentrer au quartier des plaisirs" }
+};
+const steps = [
+  { z: 'officine', ch: 'Prologue · ép. 1', t: 'Chez Luomen', tuto: true,
+    what: "Maomao vit avec son père adoptif Luomen, apothicaire du quartier des plaisirs. Il la met en garde : des ravisseurs rôdent dans le coin.",
+    learn: 'Se déplacer, parler aux personnages',
+    guide: "Luomen donne la première mission (livrer des herbes) : le joueur bouge parce que l'histoire le demande.",
+    gain: ['herbes'], open: 'La maison Verdigris' },
+  { z: 'verdigris', ch: 'Prologue · ép. 1', t: 'La livraison', tuto: true,
+    what: "Maomao apporte ses herbes à la maison Verdigris et y retrouve la vieille mère maquerelle et ses « grandes sœurs », les courtisanes.",
+    learn: 'Dialoguer, donner un objet à un personnage',
+    guide: "Le joueur découvre le lieu où il reviendra à la fin : la boucle est préparée dès le début.",
+    lose: ['herbes'], open: "Le champ d'herbes" },
+  { z: 'champ', ch: 'Prologue · ép. 1', t: "L'enlèvement", tuto: true,
+    what: "Sur le chemin du retour, Maomao s'arrête devant un champ plein d'herbes médicinales. Ce jour-là, ses fausses taches de rousseur s'étaient effacées. Trois hommes l'encerclent : elle est enlevée.",
+    learn: 'Cueillir · comprendre la discrétion',
+    guide: "Le joueur cueille librement, puis l'enlèvement lui montre ce que coûte d'être remarquée." },
+  { z: 'porte', ch: 'Prologue · ép. 1', t: 'Vendue au palais', tuto: true,
+    what: "Elle est vendue au Palais intérieur comme blanchisseuse. Elle décide de faire profil bas et de cacher ce qu'elle sait.",
+    learn: "Comprendre le monde et l'objectif : tenir, puis rentrer chez Luomen",
+    guide: "L'arrivée au palais présente le monde par l'histoire, sans texte d'introduction.",
+    open: 'Blanchisserie, pavillon de Jade' },
+  { z: 'blanchisserie', ch: 'Chapitre 1 · ép. 1', t: 'Les rumeurs', tuto: true,
+    what: "Xiaolan, une servante bavarde, raconte la rumeur du palais : les enfants de l'empereur meurent à cause d'une malédiction.",
+    learn: 'Écouter les rumeurs (elles se notent dans le journal)',
+    guide: "Une conversation donne la piste de l'enquête suivante." },
+  { z: 'jade', ch: 'Chapitre 1 · ép. 1', t: 'Les messages anonymes', tuto: true,
+    what: "Maomao comprend que la poudre blanche du maquillage, au plomb, empoisonne les enfants des concubines Gyokuyou et Lihua. Elle laisse des messages anonymes sur le rebord de leurs fenêtres. Gyokuyou écoute et sa fille survit ; Lihua l'ignore et son fils meurt.",
+    learn: 'Observer, déduire, agir en restant discrète',
+    guide: "Le choix d'aider vient du joueur : aucune flèche ne lui dit quoi faire." },
+  { z: 'jinshi', ch: 'Chapitre 1 · ép. 1', t: 'Démasquée', tuto: true,
+    what: "Jinshi convoque les servantes dans son bureau et remonte jusqu'à Maomao. Gyokuyou la prend comme dame de compagnie.",
+    learn: 'Le statut ouvre de nouveaux lieux',
+    guide: "Les nouveaux accès sont une récompense de l'histoire, pas un menu.",
+    gain: ['statut'], open: 'Cabinet médical, jardins, pavillons' },
+  { z: 'jade', ch: 'Chapitre 2 · ép. 2', t: 'La goûteuse', tuto: true,
+    what: "Maomao devient la goûteuse de Gyokuyou. Les autres dames voient ses bandages : elle teste des poisons sur son propre bras.",
+    learn: 'Goûter les plats · jauge de tolérance',
+    guide: "La mécanique de tolérance est expliquée par un trait de caractère de Maomao." },
+  { z: 'cabinet', ch: 'Chapitre 2 · ép. 2', t: 'Le cabinet médical', tuto: true,
+    what: "Jinshi lui commande un aphrodisiaque. Au cabinet médical, le médecin n'apprécie pas qu'on la laisse entrer. Maomao prépare la potion à base de cacao.",
+    learn: 'Piler : fabriquer des remèdes',
+    guide: "On apprend la fabrication parce qu'on doit honorer la commande de Jinshi.",
+    gain: ['cacao'] },
+  { z: 'jardins', ch: 'Chapitre 2 · ép. 2', t: 'Les chocolats', tuto: true, endTuto: true,
+    what: "Pendant que le mélange refroidit, Maomao part cueillir des herbes dans les jardins du palais et oublie l'heure. Trois dames de compagnie mangent les chocolats faits avec le reste : l'effet est trois fois plus fort qu'un fortifiant.",
+    learn: 'Réutiliser la cueillette dans un nouveau lieu',
+    guide: "Le joueur sait déjà cueillir : rien n'est réexpliqué.",
+    lose: ['cacao'] },
+  { z: 'rempart', ch: 'Chapitre 3 · ép. 3', t: 'La femme fantôme', night: true,
+    what: "Une rumeur parle d'une femme fantôme qui danse la nuit sur le rempart est. Maomao découvre que c'est Fuyou, une concubine qui a fait semblant d'être folle pour être offerte au général qu'elle aime.",
+    learn: 'Enquêter de nuit', open: 'Le chemin de ronde (raccourci)' },
+  { z: 'cristal', ch: 'Chapitre 3 · ép. 4', t: 'Soigner Lihua',
+    what: "L'empereur demande à Maomao de soigner Lihua. Ses dames de compagnie bloquent l'accès ; Jinshi intervient. Régime spécial, et un sauna construit par Jinshi : Lihua guérit en deux mois.",
+    learn: 'Soigner un patient sur la durée' },
+  { z: 'cabinet', ch: 'Chapitre 4 · ép. 5', t: 'Le médecin Guen',
+    what: "En travaillant avec le médecin Guen, Maomao soigne un patient couvert de plaques, victime d'une prétendue malédiction.",
+    learn: 'Diagnostiquer' },
+  { z: 'jade', ch: 'Chapitre 4 · ép. 5', t: 'Les taches de rousseur',
+    what: "Avant la fête du jardin, les dames découvrent que les taches de rousseur de Maomao sont du maquillage : elle les dessine pour décourager les agresseurs, une habitude prise à la maison close. Jinshi lui offre une épingle à cheveux.",
+    gain: ['epingle'] },
+  { z: 'fete', ch: 'Finale · ép. 6', t: 'La fête du jardin',
+    what: "Maomao reçoit d'autres épingles, dont une de Lihua. La soupe de Gyokuyou est empoisonnée ; Maomao en avale et Jinshi la soigne. La vraie cible était sans doute Lishu, allergique au maquereau : son vinaigre a été échangé.",
+    learn: 'Toutes les mécaniques réunies' },
+  { z: 'diamant', ch: 'Finale · ép. 7', t: "Le bol d'argent",
+    what: "Maomao relève les empreintes sur le bol d'argent empoisonné et en trouve une d'un inconnu. Elle soupçonne Lishu d'être maltraitée par ses propres dames de compagnie.",
+    learn: 'Relever des indices', gain: ['bol'] },
+  { z: 'porte', ch: 'Retour · ép. 7', t: 'Le garant',
+    what: "Les épingles permettent de demander une sortie, si un homme de rang se porte garant. Maomao propose au soldat Lihaku des lettres d'introduction pour la maison Verdigris en échange de son accord. Lihaku ne la reconnaît même pas avec ses taches de rousseur.",
+    gain: ['permission', 'lettre'], lose: ['epingle', 'bol'], open: 'La sortie du palais (trois jours)' },
+  { z: 'verdigris', ch: 'Retour · ép. 7', t: 'La maison Verdigris',
+    what: "Maomao revient à la maison Verdigris, où elle travaillait, et y conduit Lihaku comme promis.",
+    lose: ['lettre'] },
+  { z: 'officine', ch: 'Fin · ép. 7', t: 'Retour chez Luomen',
+    what: "Maomao retrouve son père Luomen, qui voit dans son travail au palais un tour du destin. Elle est revenue à son point de départ.",
+    done: true }
+];
+
+const COL = { start: '#1D9E75', lock: '#D85A30', hub: '#9a978d' };
+const Z = Object.fromEntries(zones.map(z => [z.id, z]));
+zones.forEach(z => z.unlock = steps.findIndex(s => s.z === z.id));
+
+const S = 12, X = x => (x + 34) * S, Y = z => (24 - z) * S;
+const NS = 'http://www.w3.org/2000/svg';
+function el(tag, a, p) { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); if (p) p.appendChild(e); return e; }
+const world = document.getElementById('world'), topL = document.getElementById('top'), svg = document.getElementById('map');
+let seed = 11; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const box = z => ({ x: X(z.x - z.w / 2), y: Y(z.z + z.d / 2), w: z.w * S, h: z.d * S, cx: X(z.x), cy: Y(z.z) });
+
+/* Fond */
+el('rect', { x: -2000, y: -2000, width: 5000, height: 5000, fill: '#5f7d45' }, world);
+for (let i = 0; i < 60; i++) el('circle', { cx: rnd() * 816, cy: 560 + rnd() * 220, r: 2 + rnd() * 3, fill: '#6f8f52' }, world);
+el('rect', { x: X(-31.5), y: Y(21), width: 63 * S, height: 42 * S, fill: '#ead9b5' }, world);
+for (let i = 0; i < 9; i++) el('line', { x1: X(-31.5), x2: X(31.5), y1: Y(21) + i * 56 + 28, y2: Y(21) + i * 56 + 28, stroke: '#e0cca3', 'stroke-width': 1 }, world);
+const wallD = `M${X(-4.5)} ${Y(-21)} L${X(-31.5)} ${Y(-21)} L${X(-31.5)} ${Y(21)} L${X(31.5)} ${Y(21)} L${X(31.5)} ${Y(-21)} L${X(4.5)} ${Y(-21)}`;
+el('path', { d: wallD, fill: 'none', stroke: '#3a2a22', 'stroke-width': 14, 'stroke-linejoin': 'round' }, world);
+el('path', { d: wallD, fill: 'none', stroke: '#8c2a1c', 'stroke-width': 9, 'stroke-linejoin': 'round' }, world);
+
+/* Dessins */
+function house(g, cx, cy, w, h, wall, roof) {
+  el('rect', { x: cx - w / 2 - 4, y: cy - h / 2 - 4, width: w + 8, height: h + 8, rx: 3, fill: roof }, g);
+  el('rect', { x: cx - w / 2 + 3, y: cy - h / 2 + 3, width: w - 6, height: h - 6, rx: 2, fill: 'none', stroke: 'rgba(255,255,255,.25)', 'stroke-width': 1.5 }, g);
+  el('line', { x1: cx - w / 2 + 6, x2: cx + w / 2 - 6, y1: cy, y2: cy, stroke: 'rgba(0,0,0,.35)', 'stroke-width': 2 }, g);
+  el('path', { d: `M${cx - w / 2 - 4} ${cy - h / 2 - 4} L${cx - w / 2 + 6} ${cy} L${cx - w / 2 - 4} ${cy + h / 2 + 4} M${cx + w / 2 + 4} ${cy - h / 2 - 4} L${cx + w / 2 - 6} ${cy} L${cx + w / 2 + 4} ${cy + h / 2 + 4}`, fill: 'none', stroke: 'rgba(0,0,0,.3)', 'stroke-width': 1.5 }, g);
+}
+const lant = (g, x, y) => { el('circle', { cx: x, cy: y, r: 4.5, fill: '#e0412b', stroke: '#7a1f14', 'stroke-width': 1 }, g); };
+function draw(z, g) {
+  const b = box(z);
+  switch (z.kind) {
+    case 'pavilion': house(g, b.cx, b.cy, b.w * .5, b.h * .5, '', '#7a1f14'); lant(g, b.cx - b.w * .32, b.cy); lant(g, b.cx + b.w * .32, b.cy); break;
+    case 'big': house(g, b.cx, b.cy, b.w * .62, b.h * .6, '', '#b8860b'); el('rect', { x: b.cx - b.w * .14, y: b.cy - b.h * .14, width: b.w * .28, height: b.h * .28, rx: 2, fill: '#d9a521' }, g); break;
+    case 'office': house(g, b.cx, b.cy, b.w * .5, b.h * .5, '', '#3d5a4a'); break;
+    case 'office2': house(g, b.cx, b.cy, b.w * .55, b.h * .5, '', '#26215C'); break;
+    case 'kitchen': house(g, b.cx, b.cy, b.w * .6, b.h * .5, '', '#5F5E5A'); el('circle', { cx: b.cx + b.w * .18, cy: b.cy - 6, r: 6, fill: '#2a1d16' }, g); break;
+    case 'court':
+      house(g, b.cx, b.y + b.h * .3, b.w * .7, b.h * .28, '', '#5F5E5A');
+      el('circle', { cx: b.cx - 36, cy: b.y + b.h * .72, r: 9, fill: '#7d756a', stroke: '#4a443c', 'stroke-width': 2 }, g);
+      el('line', { x1: b.cx - 10, x2: b.cx + 50, y1: b.y + b.h * .72, y2: b.y + b.h * .72, stroke: '#6b4a33', 'stroke-width': 1 }, g);
+      ['#f3e6cc', '#c9d6e0', '#e8c1c1'].forEach((c, i) => el('rect', { x: b.cx - 6 + i * 20, y: b.y + b.h * .72, width: 14, height: 10, fill: c }, g));
+      break;
+    case 'garden':
+      for (let i = 0; i < 4; i++) for (let j = 0; j < 8; j++)
+        el('circle', { cx: b.x + 18 + j * (b.w - 36) / 7, cy: b.y + 14 + i * (b.h - 28) / 3, r: 5, fill: (i + j) % 5 === 0 ? '#c76a8a' : (j % 2 ? '#2f6b2f' : '#4f8a3a') }, g);
+      break;
+    case 'forest':
+      for (let i = 0; i < 120; i++) {
+        const x = b.x + 8 + rnd() * (b.w - 16), y = b.y + 8 + rnd() * (b.h - 16);
+        
+        el('circle', { cx: x, cy: y, r: 6 + rnd() * 5, fill: rnd() > .5 ? '#2f5a35' : '#3c6b3b', stroke: '#22412a', 'stroke-width': 1 }, g);
+      }
+      el('circle', { cx: X(-11), cy: Y(15.5), r: 10, fill: '#7d756a', stroke: '#4a443c', 'stroke-width': 3 }, g);
+      el('circle', { cx: X(-11), cy: Y(15.5), r: 6, fill: '#111' }, g);
+      break;
+    case 'hills':
+      [[-5, 1, 3.2], [1, -1.5, 2.6], [5, 1.5, 3.6], [-1, 2.5, 2.2]].forEach(([dx, dz, r]) =>
+        el('ellipse', { cx: X(z.x + dx), cy: Y(z.z + dz), rx: r * S, ry: r * S * .8, fill: '#6e8a45', stroke: '#55703a', 'stroke-width': 2 }, g));
+      for (let i = 0; i < 9; i++) el('circle', { cx: b.x + 10 + rnd() * (b.w - 20), cy: b.y + b.h - 12 - rnd() * 14, r: 3, fill: '#e2c35a' }, g);
+      break;
+    case 'town':
+      [[-5.5, -1.5], [-1.5, 1.5], [2.5, -1.5], [6, 1.5], [-6, 2.2]].forEach(([dx, dz], i) => {
+        house(g, X(z.x + dx), Y(z.z + dz), 30, 24, '', i === 1 ? '#7a1f14' : '#4b3a30');
+        lant(g, X(z.x + dx) + 19, Y(z.z + dz) + 14);
+      });
+      break;
+    case 'wall':
+      el('rect', { x: b.x + 6, y: b.y + 6, width: b.w - 12, height: b.h - 12, rx: 3, fill: '#b9a27a', stroke: '#6b4a33', 'stroke-width': 1.5 }, g);
+      for (let i = 0; i < 26; i++) { el('rect', { x: b.x + 2, y: b.y + 10 + i * (b.h - 20) / 26, width: 6, height: 6, fill: '#6b4a33' }, g); el('rect', { x: b.x + b.w - 8, y: b.y + 10 + i * (b.h - 20) / 26, width: 6, height: 6, fill: '#6b4a33' }, g); }
+      break;
+    case 'shop':
+      house(g, b.cx - 8, b.cy - 4, 52, 40, '', '#4b3a30');
+      for (let i = 0; i < 6; i++) el('circle', { cx: b.x + 14 + i * 14, cy: b.y + b.h - 30, r: 4, fill: i % 2 ? '#7d9a5a' : '#c9a35a' }, g);
+      el('line', { x1: b.x + 8, x2: b.x + b.w - 8, y1: b.y + b.h - 36, y2: b.y + b.h - 36, stroke: '#6b4a33', 'stroke-width': 1.5 }, g);
+      break;
+    case 'verdigris':
+      house(g, b.cx, b.cy - 6, b.w * .7, b.h * .55, '', '#3d7a6a');
+      el('rect', { x: b.cx - 14, y: b.cy - 18, width: 28, height: 20, rx: 2, fill: '#4f9584' }, g);
+      for (let i = 0; i < 4; i++) lant(g, b.x + 16 + i * (b.w - 32) / 3, b.y + 10);
+      break;
+    case 'gate':
+      el('rect', { x: b.cx - 50, y: b.cy - 12, width: 100, height: 24, rx: 3, fill: '#3a2a22' }, g);
+      el('rect', { x: b.cx - 46, y: b.cy - 8, width: 92, height: 16, rx: 2, fill: '#8c2a1c' }, g);
+      el('line', { x1: b.cx - 40, x2: b.cx + 40, y1: b.cy, y2: b.cy, stroke: '#3a2a22', 'stroke-width': 2 }, g);
+      break;
+  }
+}
+zones.forEach(z => {
+  const b = box(z);
+  const g = el('g', { class: 'zone' }, world);
+  el('rect', { x: b.x, y: b.y, width: b.w, height: b.h, rx: 8, fill: COL[z.cat], 'fill-opacity': z.kind === 'gate' ? 0 : .85, stroke: 'rgba(0,0,0,.25)', 'stroke-width': 1.5 }, g);
+  draw(z, g);
+  g.addEventListener('click', e => { if (!moved) showZone(z); });
+  z.g = g;
+});
+
+/* Chemins */
+function route(pts, color, dashed) {
+  el('polyline', { points: pts.map(p => X(p[0]) + ',' + Y(p[1])).join(' '), fill: 'none', stroke: color, 'stroke-width': 4,
+    'stroke-linecap': 'round', 'stroke-linejoin': 'round', 'stroke-dasharray': dashed ? '10 8' : 'none', 'marker-end': 'url(#ah)' }, world);
+}
+route([[-19.7, -31], [-17.3, -31]], '#BA7517');
+route([[-4.8, -31], [8.7, -31]], '#BA7517');
+route([[18, -28.3], [18, -25], [2, -25], [2, -14], [-9.5, -14], [-9.5, 3], [-10.8, 3]], '#BA7517');
+route([[4.8, -20], [27.5, -20], [27.5, 13], [22.3, 13]], '#D85A30', true);
+route([[-2, -23.2], [-2, -26.5], [-11, -26.5], [-11, -28.3]], '#0F6E56', true);
+route([[-17.3, -34.5], [-19.7, -34.5]], '#0F6E56', true);
+
+/* Étiquettes et badges */
+function pill(text, x, y, bg, fg, size, anchor, parent) {
+  const g = el('g', { class: 'badge' }, parent || topL);
+  const r = el('rect', { rx: 6, fill: bg, stroke: 'rgba(0,0,0,.25)', 'stroke-width': 1 }, g);
+  const t = el('text', { x, y, 'font-size': size, 'font-family': 'Inter, sans-serif', fill: fg, 'text-anchor': anchor || 'middle', 'dominant-baseline': 'central' }, g);
+  t.textContent = text;
+  const fit = () => { const bb = t.getBBox(); r.setAttribute('x', bb.x - 6); r.setAttribute('y', bb.y - 3); r.setAttribute('width', bb.width + 12); r.setAttribute('height', bb.height + 6); };
+  fit(); g.setText = s => { t.textContent = s; fit(); }; g.rect = r;
+  return g;
+}
+zones.forEach(z => {
+  const b = box(z);
+  z.label = pill(z.name, b.cx, z.kind === 'gate' ? b.y + b.h + 16 : b.y, '#f3e6cc', '#2b1d14', 14);
+  z.label.rect.setAttribute('stroke', COL[z.cat]); z.label.rect.setAttribute('stroke-width', 2);
+  z.label.style.cursor = 'pointer';
+  z.label.addEventListener('click', () => showZone(z));
+  if (z.npc) z.npcB = pill('👤 ' + z.npc, b.x + b.w - 10, b.y + b.h - 14, '#26215C', '#fff', 11.5, 'end');
+});
+const qz = box(Z.officine);
+pill('⭐ Objectif', qz.cx, qz.y - 30, '#7a1f14', '#f3e6cc', 11.5);
+const itemB = [], cnt = {};
+steps.forEach((s, i) => (s.gain || []).forEach(id => {
+  if (i === 0) return;
+  const b = box(Z[s.z]); const k = cnt[s.z] = (cnt[s.z] || 0) + 1;
+  const g = el('g', { class: 'badge' }, topL);
+  const gate = Z[s.z].kind === 'gate';
+  const x = gate ? b.x - 18 - (k - 1) * 30 : b.x + 18 + (k - 1) * 30, y = gate ? b.cy : b.y + b.h - 18;
+  el('circle', { cx: x, cy: y, r: 13, fill: '#BA7517', stroke: '#fff', 'stroke-width': 2 }, g);
+  const t = el('text', { x, y: y + 1, 'font-size': 14, 'text-anchor': 'middle', 'dominant-baseline': 'central' }, g); t.textContent = ITEMS[id].e;
+  itemB.push({ g, step: i });
+}));
+
+/* Maomao */
+const mao = el('g', {}, topL);
+el('circle', { r: 15, fill: 'rgba(239,159,39,.25)', stroke: '#EF9F27', 'stroke-width': 3 }, mao);
+el('circle', { cy: 3, r: 7, fill: '#7f9c86' }, mao);
+el('circle', { cy: -5, r: 5.5, fill: '#f1d2b6', stroke: '#2b1d14', 'stroke-width': 2.5 }, mao);
+const hole = document.getElementById('hole');
+const spot = z => z.id === 'rempart' ? [X(27.5), Y(6)] : [X(z.x + z.w * .3), Y(z.z - z.d * .2)];
+let mp = spot(Z.officine);
+function placeMao(p) { mp = p; mao.setAttribute('transform', `translate(${p[0]} ${p[1]})`); hole.setAttribute('cx', p[0]); hole.setAttribute('cy', p[1]); }
+placeMao(mp);
+
+/* Vue : zoom, déplacement */
+let vb = [0, 0, 816, 780];
+const setVB = v => { vb = v; svg.setAttribute('viewBox', v.join(' ')); };
+const easeF = t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+let animId = 0;
+function tween(toVB, toM, ms) {
+  const id = ++animId, fv = vb.slice(), fm = mp.slice(), t0 = performance.now();
+  (function f(now) {
+    if (id !== animId) return;
+    const k = easeF(Math.min(1, (now - t0) / ms));
+    setVB(fv.map((v, i) => v + (toVB[i] - v) * k));
+    if (toM) placeMao([fm[0] + (toM[0] - fm[0]) * k, fm[1] + (toM[1] - fm[1]) * k]);
+    if (k < 1) requestAnimationFrame(f);
+  })(t0);
+}
+function around(cx, cy, w) { const h = w * 780 / 816; return [cx - w / 2, cy - h / 2, w, h]; }
+svg.addEventListener('wheel', e => {
+  e.preventDefault(); animId++;
+  const r = svg.getBoundingClientRect(), s = Math.min(r.width / vb[2], r.height / vb[3]);
+  const px = vb[0] + (e.clientX - r.left - (r.width - vb[2] * s) / 2) / s, py = vb[1] + (e.clientY - r.top - (r.height - vb[3] * s) / 2) / s;
+  const f = Math.min(2.5, Math.max(.25, e.deltaY > 0 ? 1.15 : 1 / 1.15));
+  const w = Math.min(1400, Math.max(160, vb[2] * f)), k = w / vb[2];
+  setVB([px - (px - vb[0]) * k, py - (py - vb[1]) * k, w, vb[3] * k]);
+}, { passive: false });
+let drag = null, moved = false;
+svg.addEventListener('pointerdown', e => { drag = { x: e.clientX, y: e.clientY, vb: vb.slice() }; moved = false; });
+window.addEventListener('pointermove', e => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  if (Math.abs(dx) + Math.abs(dy) > 4) { moved = true; svg.classList.add('drag'); animId++; }
+  if (!moved) return;
+  const r = svg.getBoundingClientRect(), s = Math.min(r.width / vb[2], r.height / vb[3]);
+  setVB([drag.vb[0] - dx / s, drag.vb[1] - dy / s, vb[2], vb[3]]);
+});
+window.addEventListener('pointerup', () => { drag = null; svg.classList.remove('drag'); });
+
+/* Panneaux */
+const $ = id => document.getElementById(id);
+const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+const bagEl = $('bag');
+Object.entries(ITEMS).forEach(([id, it]) => {
+  const d = document.createElement('div'); d.className = 'slot'; d.id = 'slot-' + id;
+  d.textContent = it.e; d.title = it.n + ' : ' + it.use; bagEl.appendChild(d);
+});
+function bagAt(i) {
+  const have = new Set(), lost = new Set();
+  for (let k = 0; k <= i; k++) {
+    (steps[k].gain || []).forEach(x => { have.add(x); lost.delete(x); });
+    (steps[k].lose || []).forEach(x => { have.delete(x); lost.add(x); });
+  }
+  return { have, lost };
+}
+function showZone(z) {
+  $('iTag').textContent = z.tag; $('iName').textContent = z.name;
+  $('iBody').innerHTML = `<p>${esc(z.text)}</p>`;
+}
+function showStep(i) {
+  const s = steps[i];
+  $('iTag').textContent = `Étape ${i + 1}/${steps.length} · ${s.ch}`;
+  $('iName').textContent = s.t;
+  let h = `<p>${esc(s.what)}</p>`;
+  if (s.mono) h += `<p class="mono">« ${esc(s.mono)} »</p>`;
+  if (s.learn) h += `<div class="row learn"><span class="k">🎓 ${s.tuto ? 'Appris sans tuto' : 'Tu apprends'}</span><span>${esc(s.learn)}</span></div>`;
+  if (s.guide) h += `<div class="row guide"><span class="k">🧭 Comment on guide</span><span>${esc(s.guide)}</span></div>`;
+  (s.gain || []).forEach(id => h += `<div class="row gain"><span class="k">🎒 Tu obtiens</span><span>${ITEMS[id].e} <b>${ITEMS[id].n}</b> : ${ITEMS[id].use}</span></div>`);
+  (s.lose || []).forEach(id => h += `<div class="row lose"><span class="k">✖ Tu perds</span><span>${ITEMS[id].e} ${ITEMS[id].n}</span></div>`);
+  if (s.open) h += `<div class="row open"><span class="k">🔓 Ça ouvre</span><span>${esc(s.open)}</span></div>`;
+  if (s.endTuto) h += `<div class="row end"><span class="k">✅ Fin du tuto invisible</span><span>Le joueur sait tout faire sans avoir vu un seul écran de tutoriel.</span></div>`;
+  $('iBody').innerHTML = h;
+}
+const QUEST = '⭐ Quête : rentrer chez ton père Luomen, au quartier des plaisirs';
+function render(i) {
+  zones.forEach(q => {
+    const on = i < 0 || q.unlock <= i;
+    q.g.classList.toggle('dim', !on);
+    q.label.style.opacity = on ? 1 : .6;
+    q.label.setText((q.cat === 'lock' && (i < 0 || !on) ? '🔒 ' : '') + q.name);
+    if (q.npcB) q.npcB.classList.toggle('hide', !on);
+  });
+  itemB.forEach(({ g, step }) => g.classList.toggle('hide', !(i < 0 || step > i)));
+  const { have, lost } = i < 0 ? { have: new Set(Object.keys(ITEMS)), lost: new Set() } : bagAt(i);
+  Object.keys(ITEMS).forEach(id => $('slot-' + id).className = 'slot' + (have.has(id) ? ' on' : lost.has(id) ? ' lost' : ''));
+  const done = i >= 0 && steps[i].done;
+  $('quest').className = done ? 'done' : '';
+  $('quest').textContent = done ? '✅ Quête terminée : Maomao est rentrée chez son père' : QUEST;
+  $('night').setAttribute('opacity', i >= 0 && steps[i].night ? .88 : 0);
+}
+let cur = -1;
+function go(i) {
+  cur = i; render(i);
+  if (i < 0) {
+    $('stepLabel').textContent = 'Parcours de Maomao';
+    $('iTag').textContent = "Mode d'emploi"; $('iName').textContent = "Vue d'ensemble";
+    $('iBody').innerHTML = "<p>Toute la carte, avec les objets à récupérer (ronds dorés) et les lieux verrouillés 🔒.</p><p>Appuie sur ▶ (ou la flèche droite du clavier) pour suivre Maomao étape par étape. Les étapes 1 à 10 forment le tutoriel invisible : chaque fiche montre ce que le joueur apprend sans s'en rendre compte.</p>";
+    tween([0, 0, 816, 780], null, 600); return;
+  }
+  const s = steps[i], z = Z[s.z], p = s.at ? [X(s.at[0]), Y(s.at[1])] : spot(z);
+  showStep(i);
+  $('stepLabel').textContent = `${i + 1}/${steps.length} · ${s.t}`;
+  if (s.at) tween(around(p[0], p[1], 440), p, 800);
+  else tween(around(z.id === 'rempart' ? X(20) : X(z.x), z.id === 'rempart' ? Y(4) : Y(z.z), 440), p, 800);
+}
+$('next').onclick = () => go(cur >= steps.length - 1 ? 0 : cur + 1);
+$('prev').onclick = () => go(cur <= 0 ? steps.length - 1 : cur - 1);
+$('free').onclick = () => go(-1);
+window.addEventListener('keydown', e => { if (e.key === 'ArrowRight') $('next').click(); if (e.key === 'ArrowLeft') $('prev').click(); });
+go(-1);
+</script>
+</body>
+</html>
